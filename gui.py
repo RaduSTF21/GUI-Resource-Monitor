@@ -77,19 +77,74 @@ def show_history():
     history_window.geometry("700x500")
 
     filter_frame = ctk.CTkFrame(history_window)
+    filter_frame.pack()
 
-    start_time = ctk.CTkLabel(filter_frame, text="Start Time : ")
+    start_time = ctk.CTkLabel(filter_frame, text="Start Date : ")
+    start_time.pack()
     start_entry = ctk.CTkEntry(filter_frame)
+    start_entry.pack()
+    end_time = ctk.CTkLabel(filter_frame, text="End Date : ")
+    end_time.pack()
+    end_entry = ctk.CTkEntry(filter_frame)
+    end_entry.pack()
+    scroll_frame = ctk.CTkScrollableFrame(history_window, width=680, height=480)
+    scroll_frame.pack(padx=10, pady=10, fill="both", expand=True)
+    end_check = ctk.BooleanVar()
+    end_btn = ctk.CTkCheckBox(filter_frame, text="Present ",variable=end_check)
+    end_btn.pack()
+
+    def apply_filter():
+
+        for child in scroll_frame.winfo_children():
+            child.destroy()
+        headers = ["Time", "CPU", "RAM", "Disk Read","Disk Write", "Net Sent", "Net Recv"]
+        for col, row in enumerate(headers):
+            ctk.CTkLabel(scroll_frame, text=row).grid(row=0,column=col,padx=5,pady=5)
+        with open("log.csv", "r") as log:
+            lines = log.readlines()
+        start = datetime.datetime.strptime(start_entry.get(), '%Y-%m-%d')
+        if end_check.get():
+            end = datetime.datetime.now()
+        else :
+            end = datetime.datetime.strptime(end_entry.get(), "%Y-%m-%d")
+        index = 2
+
+        entries = 0
+
+        for row in lines:
+            row = row.strip().split(',')
+            time = datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
+            if start <= time <= end:
+                entries = entries+1
+
+        start_index = 0
+
+        for ind, row in enumerate(lines):
+            row = row.strip().split(',')
+            time = datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
+
+            if time >= start :
+                start_index = ind
+                break
+
+        for row in range(start_index,start_index+entries,max(1,entries//100)):
+            if row >= len(lines): break
+            line = lines[row].strip().split(',')
+            for index1, col in enumerate(line):
+                ctk.CTkLabel(scroll_frame, text=col).grid(row=index,column=index1,padx=5,pady=5)
+            index = index+1
+            
 
 
-    scroll_frame = ctk.CTkScrollableFrame(history_window,width=680,height=480)
-    scroll_frame.pack(padx=10,pady=10,fill = "both",expand=True)
 
-    headers = ["Time", "CPU", "RAM", "Disk Read","Disk Write", "Net Sent", "Net Recv"]
-    for col, row in enumerate(headers):
-        ctk.CTkLabel(scroll_frame, text=row).grid(row=0,column=col,padx=5,pady=5)
-    with open("log.csv", "r") as log:
-     lines = log.readlines()
+
+
+
+
+    filter_button = ctk.CTkButton(filter_frame,text="History",command=apply_filter)
+    filter_button.pack()
+
+
     #def monitor_log():
      #   with open("log.csv", "r") as log:
       #      lines = log.readlines()
@@ -102,10 +157,10 @@ def show_history():
 
         #history_window.after(1000, monitor_log)
     #monitor_log()
-    for index, row in enumerate(lines):
-        line = row.strip().split(",")
-        for index1, col in enumerate(line):
-            ctk.CTkLabel(scroll_frame, text=col).grid(row=index+1,column=index1,padx=5,pady=5)
+    #for index, row in enumerate(lines):
+     #   line = row.strip().split(",")
+      #  for index1, col in enumerate(line):
+       #     ctk.CTkLabel(scroll_frame, text=col).grid(row=index+1,column=index1,padx=5,pady=5)
 
 
 
@@ -169,7 +224,7 @@ def update_stats():
     net_history.append(net_stat)
     net_history = net_history[-60:]
 
-    details=f"{datetime.datetime.now()},{cpu_util},{ram_util},{disk_util.read_time-old_disk.read_time},{disk_util.write_time-old_disk.write_time},{net_stat.bytes_sent-old_net.bytes_sent},{net_stat.bytes_recv-old_net.bytes_recv}\n"
+    details=f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')},{cpu_util},{ram_util},{disk_util.read_time-old_disk.read_time},{disk_util.write_time-old_disk.write_time},{net_stat.bytes_sent-old_net.bytes_sent},{net_stat.bytes_recv-old_net.bytes_recv}\n"
 
     old_disk = disk_util
 

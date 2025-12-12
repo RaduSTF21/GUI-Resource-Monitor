@@ -171,10 +171,12 @@ history_button.pack()
 def get_size(n):
     size_list = ['B', 'KB', 'MB', 'GB']
     for size in size_list:
-        if (n < 1024):
-            return (f"{n:.2f}{size}")
+        if n < 1024:
+            return f"{n:.2f}{size}"
         else:
             n = n / 1024
+    return None
+
 
 def update_stats():
     global old_net,old_disk,cpu_history,ram_history,disk_history,net_history

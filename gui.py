@@ -2,7 +2,7 @@ import customtkinter as ctk
 import psutil
 import datetime
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
 
 ctk.set_appearance_mode("dark")
@@ -76,73 +76,181 @@ def show_history():
     history_window.title("History")
     history_window.geometry("700x500")
 
+    checkbox_frame = ctk.CTkFrame(history_window)
+    checkbox_frame.pack(fill = "x", padx = 10, pady = 5)
+
+    hist_var_ram = ctk.BooleanVar(value=True)
+    hist_var_cpu = ctk.BooleanVar(value=True)
+    hist_var_disk = ctk.BooleanVar(value=True)
+    hist_net_recv = ctk.BooleanVar(value=True)
+    hist_net_sent = ctk.BooleanVar(value=True)
+
+
+
     filter_frame = ctk.CTkFrame(history_window)
     filter_frame.pack()
 
     start_time = ctk.CTkLabel(filter_frame, text="Start Date : ")
     start_time.pack()
-    start_entry = ctk.CTkEntry(filter_frame)
+    start_entry = ctk.CTkEntry(filter_frame, placeholder_text="YYYY-MM-DD")
     start_entry.pack()
     end_time = ctk.CTkLabel(filter_frame, text="End Date : ")
     end_time.pack()
-    end_entry = ctk.CTkEntry(filter_frame)
+    end_entry = ctk.CTkEntry(filter_frame, placeholder_text="YYYY-MM-DD")
     end_entry.pack()
-    scroll_frame = ctk.CTkScrollableFrame(history_window, width=680, height=480)
-    scroll_frame.pack(padx=10, pady=10, fill="both", expand=True)
+    plot_frame = ctk.CTkFrame(history_window, width=680, height=480)
+    plot_frame.pack(padx=10, pady=10, fill="both", expand=True)
     end_check = ctk.BooleanVar()
     end_btn = ctk.CTkCheckBox(filter_frame, text="Present ",variable=end_check)
     end_btn.pack()
+    def on_end_typing(event):
+        end_check.set(False)
+
+    def on_present_toggled():
+        if end_check.get():
+            end_entry.delete(0, "end")
+            apply_filter()
+
+    end_entry.bind("<KeyRelease", on_end_typing)
+    end_btn.configure(command=on_present_toggled)
 
     def apply_filter():
-
-        for child in scroll_frame.winfo_children():
+        for child in plot_frame.winfo_children():
             child.destroy()
-        headers = ["Time", "CPU", "RAM", "Disk Read","Disk Write", "Net Sent", "Net Recv"]
-        for col, row in enumerate(headers):
-            ctk.CTkLabel(scroll_frame, text=row).grid(row=0,column=col,padx=5,pady=5)
+
+        fig1 = plt.Figure(figsize=(5, 5))
+        fig1.set_facecolor("#242424")
+
+        ax1 = fig1.add_subplot(111)
+        ax1.set_facecolor("#242424")
+        canvas1 = FigureCanvasTkAgg(fig1, plot_frame)
+        canvas1.draw()
+
+        toolbar = NavigationToolbar2Tk(canvas1,plot_frame)
+        toolbar.update()
+
+        canvas1.get_tk_widget().pack(side="top", fill="both", expand=True)
+
+        time = []
+        ram_usage = []
+        cpu_usage = []
+        net_usage_sent = []
+        net_usage_recv = []
+        disk_usage = []
         with open("log.csv", "r") as log:
             lines = log.readlines()
-        start = datetime.datetime.strptime(start_entry.get(), '%Y-%m-%d')
-        if end_check.get():
-            end = datetime.datetime.now()
-        else :
-            end = datetime.datetime.strptime(end_entry.get(), "%Y-%m-%d")
-        index = 2
-
-        entries = 0
-
-        for row in lines:
-            row = row.strip().split(',')
-            time = datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
-            if start <= time <= end:
-                entries = entries+1
-
-        start_index = 0
-
-        for ind, row in enumerate(lines):
-            row = row.strip().split(',')
-            time = datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
-
-            if time >= start :
-                start_index = ind
-                break
-
-        for row in range(start_index,start_index+entries,max(1,entries//100)):
-            if row >= len(lines): break
-            line = lines[row].strip().split(',')
-            for index1, col in enumerate(line):
-                ctk.CTkLabel(scroll_frame, text=col).grid(row=index,column=index1,padx=5,pady=5)
-            index = index+1
-            
+        fliter_start = start_entry.get()
+        filter_end = end_entry.get()
 
 
+        for line in lines:
+            line = line.strip().split(',')
+            if len(line) < 7 :
+                continue
+            try:
+                current_time = datetime.datetime.strptime(line[0], "%Y-%m-%d %H:%M:%S")
+                if len(time) > 0 and time[-1] is not None and (current_time - time[-1] > datetime.timedelta(seconds=5) ):
+                    time.append(None)
+                    ram_usage.append(None)
+                    cpu_usage.append(None)
+                    disk_usage.append(None)
+                    net_usage_recv.append(None)
+                    net_usage_sent.append(None)
+
+                time.append(current_time)
+                ram_usage.append(float(line[1]))
+                cpu_usage.append(float(line[2]))
+                disk_usage.append((float(line[3]) + float(line[4])) / 10)
+                net_usage_sent.append(float(line[5]))
+                net_usage_recv.append(float(line[6]))
+            except ValueError:
+                continue
+
+
+        ax1.clear()
+        ax1.grid(True, color="#404040")
+        ax1.tick_params(labelcolor="white")
+        for spine in ax1.spines.values():
+            spine.set_edgecolor("white")
+        ax2 = ax1.twinx()
+        ax2.clear()
+        ax2.tick_params(labelcolor="white")
+        for spine in ax2.spines.values():
+            spine.set_edgecolor("white")
+        if hist_var_ram.get():
+            ax1.plot(time,ram_usage, label="Ram")
+        if hist_var_cpu.get():
+            ax1.plot(time,cpu_usage, label="CPU")
+        if hist_net_sent.get():
+            ax2.plot(time,net_usage_sent, label="Net sent")
+        if hist_net_recv.get():
+            ax2.plot(time,net_usage_recv, label="Net recv")
+        if hist_var_disk.get():
+            ax2.plot(time,disk_usage, label="Disk")
+
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines1+lines2,labels1+labels2,loc="upper left")
+        ax1.set_ylim(0,100)
+        canvas1.draw()
+
+        # headers = ["Time", "CPU", "RAM", "Disk Read","Disk Write", "Net Sent", "Net Recv"]
+        # for col, row in enumerate(headers):
+        #     ctk.CTkLabel(scroll_frame, text=row).grid(row=0,column=col,padx=5,pady=5)
+        # with open("log.csv", "r") as log:
+        #     lines = log.readlines()
+        # start = datetime.datetime.strptime(start_entry.get(), '%Y-%m-%d')
+        # if end_check.get():
+        #     end = datetime.datetime.now()
+        # else :
+        #     end = datetime.datetime.strptime(end_entry.get(), "%Y-%m-%d")
+        # index = 2
+        #
+        # entries = 0
+        #
+        # for row in lines:
+        #     row = row.strip().split(',')
+        #     time = datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
+        #     if start <= time <= end:
+        #         entries = entries+1
+        #
+        # start_index = 0
+        #
+        # for ind, row in enumerate(lines):
+        #     row = row.strip().split(',')
+        #     time = datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
+        #
+        #     if time >= start :
+        #         start_index = ind
+        #         break
+        #
+        # for row in range(start_index,start_index+entries,max(1,entries//100)):
+        #     if row >= len(lines): break
+        #     line = lines[row].strip().split(',')
+        #     for index1, col in enumerate(line):
+        #         ctk.CTkLabel(scroll_frame, text=col).grid(row=index,column=index1,padx=5,pady=5)
+        #     index = index+1
 
 
 
 
 
-    filter_button = ctk.CTkButton(filter_frame,text="History",command=apply_filter)
+
+
+
+    filter_button = ctk.CTkButton(filter_frame,text="Filter",command=apply_filter)
     filter_button.pack()
+    cb_ram = ctk.CTkCheckBox(checkbox_frame, text="RAM", variable=hist_var_ram, command=apply_filter)
+    cb_ram.pack()
+    cb_cpu = ctk.CTkCheckBox(checkbox_frame, text="CPU", variable=hist_var_cpu, command=apply_filter)
+    cb_cpu.pack()
+    cb_disk = ctk.CTkCheckBox(checkbox_frame, text="Disk", variable=hist_var_disk, command=apply_filter)
+    cb_disk.pack()
+    cb_net_sent = ctk.CTkCheckBox(checkbox_frame, text="Net sent", variable=hist_net_sent, command=apply_filter)
+    cb_net_sent.pack()
+    cb_net_recv = ctk.CTkCheckBox(checkbox_frame, text="Net recv", variable=hist_net_recv, command=apply_filter)
+    cb_net_recv.pack()
+    history_window.after(100,apply_filter)
 
 
     #def monitor_log():

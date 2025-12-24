@@ -56,6 +56,9 @@ canvas = FigureCanvasTkAgg(fig, graph_frame)
 
 canvas.draw()
 
+toolbar = NavigationToolbar2Tk(canvas, graph_frame)
+toolbar.update()
+
 canvas.get_tk_widget().pack(side="top", fill="both", expand=True)
 
 cpu_check = ctk.CTkCheckBox(graph_frame,text="CPU Utilization", variable=var_cpu)

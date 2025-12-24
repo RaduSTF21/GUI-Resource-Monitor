@@ -1,9 +1,18 @@
 import customtkinter as ctk
+import matplotlib
 import psutil
 import datetime
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from tkcalendar import DateEntry
+from collections import deque
+from utils import get_size, format_log_line, append_to_file
+from matplotlib.ticker import FuncFormatter
+
+color_cpu = "#00BFFF"
+color_ram = "#32CD32"
+color_disk = "#FF8C00"
+color_net = "#FF1493"
 
 ctk.set_appearance_mode("dark")
 root = ctk.CTk()
@@ -12,10 +21,10 @@ var_ram = ctk.BooleanVar()
 var_disk = ctk.BooleanVar()
 var_net = ctk.BooleanVar()
 
-cpu_history = []
-disk_history = []
-net_history = []
-ram_history = []
+cpu_history = deque(maxlen=60)
+disk_history = deque(maxlen=60)
+net_history = deque(maxlen=60)
+ram_history = deque(maxlen=60)
 
 home_frame=ctk.CTkFrame(root)
 graph_frame=ctk.CTkFrame(root)
@@ -70,6 +79,9 @@ net_label = ctk.CTkLabel(home_frame, text="Network : 0%")
 net_label.pack()
 old_net = psutil.net_io_counters()
 old_disk = psutil.disk_io_counters()
+
+def format_axis(x,pos):
+    return get_size(x)
 
 
 def show_history():
@@ -162,8 +174,13 @@ def show_history():
         net_usage_sent = []
         net_usage_recv = []
         disk_usage = []
-        with open("log.csv", "r") as log:
-            lines = log.readlines()
+        try:
+            with open("log.csv", "r") as log:
+                lines = log.readlines()
+        except FileNotFoundError:
+            lines = []
+        except PermissionError:
+            lines = []
 
         filter_start = datetime.datetime.now()
         filter_end = datetime.datetime.now()
@@ -199,6 +216,11 @@ def show_history():
             try:
                 current_time = datetime.datetime.strptime(line[0], "%Y-%m-%d %H:%M:%S")
                 if filter_start <= current_time <= filter_end:
+                    val_ram = float(line[1])
+                    val_cpu = float(line[2])
+                    val_disk = (float(line[3]) + float(line[4])) /10
+                    val_net_sent = float(line[5])
+                    val_net_recv = float(line[6])
 
                     if len(time) > 0 and time[-1] is not None and (current_time - time[-1] > datetime.timedelta(seconds=5) ):
                         time.append(None)
@@ -209,11 +231,11 @@ def show_history():
                         net_usage_sent.append(None)
 
                     time.append(current_time)
-                    ram_usage.append(float(line[1]))
-                    cpu_usage.append(float(line[2]))
-                    disk_usage.append((float(line[3]) + float(line[4])) / 10)
-                    net_usage_sent.append(float(line[5]))
-                    net_usage_recv.append(float(line[6]))
+                    ram_usage.append(val_ram)
+                    cpu_usage.append(val_cpu)
+                    disk_usage.append(val_disk)
+                    net_usage_sent.append(val_net_sent)
+                    net_usage_recv.append(val_net_recv)
             except ValueError:
                 continue
 
@@ -225,20 +247,22 @@ def show_history():
             spine.set_edgecolor("white")
         ax2 = ax1.twinx()
         ax2.clear()
+
+
         ax2.tick_params(labelcolor="white")
         for spine in ax2.spines.values():
             spine.set_edgecolor("white")
         if hist_var_ram.get():
-            ax1.plot(time,ram_usage, label="Ram")
+            ax1.plot(time,ram_usage, label="Ram",color = color_ram)
         if hist_var_cpu.get():
-            ax1.plot(time,cpu_usage, label="CPU")
+            ax1.plot(time,cpu_usage, label="CPU", color = color_cpu)
         if hist_net_sent.get():
-            ax2.plot(time,net_usage_sent, label="Net sent")
+            ax2.plot(time,net_usage_sent, label="Net sent", color = color_net)
         if hist_net_recv.get():
-            ax2.plot(time,net_usage_recv, label="Net recv")
+            ax2.plot(time,net_usage_recv, label="Net recv",color = "red")
         if hist_var_disk.get():
-            ax2.plot(time,disk_usage, label="Disk")
-
+            ax2.plot(time,disk_usage, label="Disk",color = color_disk)
+        ax2.yaxis.set_major_formatter(FuncFormatter(format_axis))
         lines1, labels1 = ax1.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
         ax1.legend(lines1+lines2,labels1+labels2,loc="upper left")
@@ -322,14 +346,6 @@ history_button = ctk.CTkButton(home_frame,text="History",command=show_history)
 history_button.pack()
 
 
-def get_size(n):
-    size_list = ['B', 'KB', 'MB', 'GB']
-    for size in size_list:
-        if n < 1024:
-            return f"{n:.2f}{size}"
-        else:
-            n = n / 1024
-    return None
 
 
 def update_stats():
@@ -347,7 +363,7 @@ def update_stats():
         cpu_label.configure(text_color="white" ,text=f"CPU Utilization: {cpu_util}%")
 
     cpu_history.append(cpu_util)
-    cpu_history = cpu_history[-60:]
+
 
 
     ram_util = psutil.virtual_memory().percent
@@ -363,7 +379,7 @@ def update_stats():
 
 
     ram_history.append(ram_util)
-    ram_history = ram_history[-60:]
+
 
 
     disk_util = psutil.disk_io_counters()
@@ -372,23 +388,22 @@ def update_stats():
     disk_label.configure(text=f"Disk Utilization: {val_disk:.1f}%")
 
     disk_history.append(val_disk)
-    disk_history = disk_history[-60:]
+
 
     net_stat = psutil.net_io_counters()
     current_speed = (net_stat.bytes_recv-old_net.bytes_recv) +(net_stat.bytes_sent-old_net.bytes_sent)
     net_label.configure(text=f"Network Utilization: {get_size(net_stat.bytes_recv-old_net.bytes_recv)}/s {get_size(net_stat.bytes_sent-old_net.bytes_sent)}/s")
 
     net_history.append(current_speed)
-    net_history = net_history[-60:]
 
-    details=f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')},{cpu_util},{ram_util},{disk_util.read_time-old_disk.read_time},{disk_util.write_time-old_disk.write_time},{net_stat.bytes_sent-old_net.bytes_sent},{net_stat.bytes_recv-old_net.bytes_recv}\n"
+
+    details=format_log_line(cpu_util,ram_util,disk_util.read_time-old_disk.read_time,disk_util.write_time-old_disk.write_time,net_stat.bytes_sent-old_net.bytes_sent,net_stat.bytes_recv-old_net.bytes_recv)
 
     old_disk = disk_util
 
     old_net = net_stat
+    append_to_file("log.csv",details)
 
-    with open("log.csv", "a") as log:
-        log.write(details)
 
     ax.clear()
     ax.grid(True,color="#404040")
@@ -401,13 +416,14 @@ def update_stats():
         spine.set_edgecolor("white")
 
     if var_cpu.get():
-        ax.plot(cpu_history,label="CPU Utilization")
+        ax.plot(cpu_history,label="CPU Utilization", color=color_cpu)
     if var_ram.get():
-        ax.plot(ram_history,label="RAM Utilization")
+        ax.plot(ram_history,label="RAM Utilization",color=color_ram)
     if var_disk.get():
-        ax01.plot(disk_history,label="Disk Utilization")
+        ax01.plot(disk_history,label="Disk Utilization",color=color_disk)
     if var_net.get():
-        ax01.plot(net_history,label="Network Utilization")
+        ax01.plot(net_history,label="Network Utilization",color=color_net)
+    ax01.yaxis.set_major_formatter(FuncFormatter(format_axis))
 
     lines1, labels1 = ax.get_legend_handles_labels()
     lines2, labels2 = ax01.get_legend_handles_labels()
